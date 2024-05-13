@@ -1,0 +1,200 @@
+---
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Plantilla de Virtual Private Cloud (VPC).
+
+Parameters:
+  Name:
+    Type: String
+
+  CidrBlock:
+    Type: String
+    Default: 10.0.0.0/16
+
+  CidrBlockPrivate:
+    Type: CommaDelimitedList
+    Default: 10.0.0.0/18,10.0.64.0/18
+
+  CidrBlockPublic:
+    Type: CommaDelimitedList
+    Default: 10.0.128.0/18,10.0.192.0/18
+
+Resources:
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref CidrBlock
+      EnableDnsHostnames: 'true'
+      EnableDnsSupport: 'true'
+      Tags: 
+        - Key: Name
+          Value: !Sub ${Name}
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags: 
+        - Key: Name
+          Value: !Sub ${Name}
+
+  VPCGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref VPC
+
+  EIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      Tags: 
+        - Key: Name
+          Value: !Sub ${Name}
+
+  SubnetPublicA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone:
+        Fn::Join:
+        - ""
+        - - !Ref "AWS::Region"
+          - a
+      CidrBlock: !Select [ 0, !Ref CidrBlockPublic ]
+      MapPublicIpOnLaunch: true
+      Tags: 
+        - Key: Name
+          Value: !Sub "${Name}-public"
+
+  SubnetPublicB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone:
+        Fn::Join:
+        - ""
+        - - !Ref "AWS::Region"
+          - b
+      CidrBlock: !Select [ 1, !Ref CidrBlockPublic ]
+      MapPublicIpOnLaunch: true
+      Tags: 
+        - Key: Name
+          Value: !Sub "${Name}-public"
+
+  NatGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt EIP.AllocationId
+      SubnetId: !Ref SubnetPublicA
+      Tags: 
+        - Key: Name
+          Value: !Sub ${Name}
+
+  RouteTablePublic:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags: 
+        - Key: Name
+          Value: !Sub "${Name}-public"
+
+  RoutePublic:
+    Type: AWS::EC2::Route
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+      RouteTableId: !Ref RouteTablePublic
+
+  SubnetRouteTableAssociationPublicA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref RouteTablePublic
+      SubnetId: !Ref SubnetPublicA
+
+  SubnetRouteTableAssociationPublicB:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref RouteTablePublic
+      SubnetId: !Ref SubnetPublicB
+
+  SubnetPrivateA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone:
+        Fn::Join:
+        - ""
+        - - !Ref "AWS::Region"
+          - a
+      CidrBlock: !Select [ 0, !Ref CidrBlockPrivate ]
+      MapPublicIpOnLaunch: true
+      Tags: 
+        - Key: Name
+          Value: !Sub "${Name}-private"
+
+  SubnetPrivateB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone:
+        Fn::Join:
+        - ""
+        - - !Ref "AWS::Region"
+          - b
+      CidrBlock: !Select [ 1, !Ref CidrBlockPrivate ]
+      MapPublicIpOnLaunch: true
+      Tags: 
+        - Key: Name
+          Value: !Sub "${Name}-private"
+
+  RouteTablePrivate:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags: 
+        - Key: Name
+          Value: !Sub "${Name}-private"
+
+  RoutePrivate:
+    Type: AWS::EC2::Route
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway
+      RouteTableId: !Ref RouteTablePrivate
+
+  SubnetRouteTableAssociationPrivateA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref RouteTablePrivate
+      SubnetId: !Ref SubnetPrivateA
+
+  SubnetRouteTableAssociationPrivateB:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref RouteTablePrivate
+      SubnetId: !Ref SubnetPrivateB
+
+Outputs:
+  Vpc:
+    Value: !Ref VPC
+    Export:
+      Name: !Sub "${Name}-vpc"
+
+  SubnetPublicA:
+    Value: !Ref SubnetPublicA
+    Export:
+      Name: !Sub "${Name}-subnetpublica"
+
+  SubnetPublicB:
+    Value: !Ref SubnetPublicB
+    Export:
+      Name: !Sub "${Name}-subnetpublicb"
+
+  SubnetPrivateA:
+    Value: !Ref SubnetPrivateA
+    Export:
+      Name: !Sub "${Name}-subnetprivatea"
+
+  SubnetPrivateB:
+    Value: !Ref SubnetPrivateB
+    Export:
+      Name: !Sub "${Name}-subnetprivateb"

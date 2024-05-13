@@ -1,0 +1,121 @@
+---
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: Plantilla de Elastic Container Service (ECS).
+
+Parameters:
+  Name:
+    Type: String
+
+  scheme:
+    Description: Balanceador publico o privado
+    Type: String
+    Default: "internet-facing"
+    AllowedValues:
+      - internet-facing
+      - internal
+
+
+
+  # vpcid:
+  #   Description: Id de la VPC donde se desplegara la infraestructura
+  #   Type: String
+
+
+
+  # deletionprotection:
+  #   Description: Protección contra eliminación de balanceadores
+  #   Type: String
+  #   Default: "false"
+
+
+
+  # subnets:
+  #   Description: Los ID de las subredes asociados a los balanceadores
+  #   Type: CommaDelimitedList
+
+  # certificate:
+  #   Description: ARN del certificado asociado al balanceador
+  #   Type: String
+
+Resources:
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupClass: STANDARD
+      LogGroupName: !Sub "${Name}"
+      RetentionInDays: 30
+      Tags: 
+        - Key: Name
+          Value: !Sub "${Name}"
+
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub "${Name}"
+      GroupDescription: !Sub "${Name}"
+      VpcId:
+        Fn::ImportValue: !Sub "${Name}-vpc"
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          IpProtocol: "-1"
+      SecurityGroupIngress:
+        - CidrIp: !Sub 0.0.0.0/0
+          IpProtocol: "-1"
+      Tags: 
+        - Key: Name
+          Value: !Sub "${Name}"
+
+  Cluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub "${Name}"
+      CapacityProviders:
+        - FARGATE
+      DefaultCapacityProviderStrategy:
+        - CapacityProvider: FARGATE
+          Base: 1
+          Weight: 100
+      Tags: 
+        - Key: Name
+          Value: !Sub "${Name}"
+
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub "${Name}"
+      Scheme: !Sub ${scheme}
+      Type: application
+      IpAddressType: ipv4
+      Subnets:
+        - Fn::ImportValue: !Sub "${Name}-subnetpublica"
+        - Fn::ImportValue: !Sub "${Name}-subnetpublicb"
+      SecurityGroups:
+        - !Sub ${SecurityGroup.Id}
+      LoadBalancerAttributes:
+        - Key: deletion_protection.enabled
+          Value: !Sub "false"
+      Tags: 
+        - Key: Name
+          Value: !Sub "${Name}"
+
+  Listener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref LoadBalancer
+      Protocol: HTTP
+      Port: 80
+      DefaultActions:
+        - Type: "fixed-response"
+          FixedResponseConfig:
+            ContentType: "text/plain"
+            MessageBody: "default route"
+            StatusCode: "200"
+
+Outputs:
+  Cluster:
+    Description: Cluster
+    Value: !GetAtt Cluster.Arn
+  LoadBalancer:
+    Description: LoadBalancer
+    Value: !GetAtt LoadBalancer.LoadBalancerArn
